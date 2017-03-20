@@ -482,6 +482,7 @@ public class RecentController implements RecentPanelView.OnExitListener,
             mRecentPanelView.setTasksLoaded(false);
             if (forceHide) {
                 if (DEBUG) Log.d(TAG, "force hide recent window");
+                CacheController.getInstance(mContext).setRecentScreenShowing(false);
                 mAnimationState = ANIMATION_STATE_NONE;
                 mHandler.removeCallbacks(mRecentRunnable);
                 mWindowManager.removeViewImmediate(mParentView);
@@ -501,11 +502,18 @@ public class RecentController implements RecentPanelView.OnExitListener,
 
     // Show the recent window.
     private void showRecents() {
+        try {
+            if (ActivityManagerNative.getDefault().isInLockTaskMode()) {
+                return;
+            }
+        } catch (RemoteException e) {}
+
         if (DEBUG) Log.d(TAG, "in animation starting");
         mIsShowing = true;
         sendCloseSystemWindows(BaseStatusBar.SYSTEM_DIALOG_REASON_RECENT_APPS);
         mAnimationState = ANIMATION_STATE_NONE;
         mHandler.removeCallbacks(mRecentRunnable);
+        CacheController.getInstance(mContext).setRecentScreenShowing(true);
         mWindowManager.addView(mParentView, generateLayoutParameter());
         mRecentPanelView.scrollToFirst();
     }
@@ -542,6 +550,7 @@ public class RecentController implements RecentPanelView.OnExitListener,
         public void run() {
             if (mAnimationState == ANIMATION_STATE_OUT) {
                 if (DEBUG) Log.d(TAG, "out animation finished");
+                CacheController.getInstance(mContext).setRecentScreenShowing(false);
             }
             mAnimationState = ANIMATION_STATE_NONE;
         }
@@ -584,6 +593,9 @@ public class RecentController implements RecentPanelView.OnExitListener,
             resolver.registerContentObserver(Settings.System.getUriFor(
                     Settings.System.RECENT_CARD_BG_COLOR),
                     false, this, UserHandle.USER_ALL);
+            resolver.registerContentObserver(Settings.System.getUriFor(
+                    Settings.System.SLIM_RECENTS_ICON_PACK),
+                    false, this, UserHandle.USER_ALL);
             update();
         }
 
@@ -616,6 +628,7 @@ public class RecentController implements RecentPanelView.OnExitListener,
             if (scaleFactor != mScaleFactor) {
                 mScaleFactor = scaleFactor;
                 rebuildRecentsScreen();
+                CacheController.getInstance(mContext).clearCache();
             }
             if (mRecentPanelView != null) {
                 mRecentPanelView.setScaleFactor(mScaleFactor);
@@ -643,6 +656,10 @@ public class RecentController implements RecentPanelView.OnExitListener,
                 backgroundColor = mContext.getResources().getColor(R.color.recent_background);
             }
             mRecentContent.setBackgroundColor(backgroundColor);
+
+            String currentIconPack = Settings.System.getString(resolver,
+                Settings.System.SLIM_RECENTS_ICON_PACK);
+            IconPackHelper.getInstance(mContext).updatePrefs(currentIconPack);
         }
     }
 
