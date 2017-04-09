@@ -482,7 +482,6 @@ public class RecentController implements RecentPanelView.OnExitListener,
             mRecentPanelView.setTasksLoaded(false);
             if (forceHide) {
                 if (DEBUG) Log.d(TAG, "force hide recent window");
-                CacheController.getInstance(mContext).setRecentScreenShowing(false);
                 mAnimationState = ANIMATION_STATE_NONE;
                 mHandler.removeCallbacks(mRecentRunnable);
                 mWindowManager.removeViewImmediate(mParentView);
@@ -513,7 +512,6 @@ public class RecentController implements RecentPanelView.OnExitListener,
         sendCloseSystemWindows(BaseStatusBar.SYSTEM_DIALOG_REASON_RECENT_APPS);
         mAnimationState = ANIMATION_STATE_NONE;
         mHandler.removeCallbacks(mRecentRunnable);
-        CacheController.getInstance(mContext).setRecentScreenShowing(true);
         mWindowManager.addView(mParentView, generateLayoutParameter());
         mRecentPanelView.scrollToFirst();
     }
@@ -550,11 +548,12 @@ public class RecentController implements RecentPanelView.OnExitListener,
         public void run() {
             if (mAnimationState == ANIMATION_STATE_OUT) {
                 if (DEBUG) Log.d(TAG, "out animation finished");
-                CacheController.getInstance(mContext).setRecentScreenShowing(false);
             }
             mAnimationState = ANIMATION_STATE_NONE;
         }
     };
+
+    protected static boolean shouldHidePanel = true;
 
     /**
      * Settingsobserver to take care of the user settings.
@@ -596,13 +595,24 @@ public class RecentController implements RecentPanelView.OnExitListener,
             resolver.registerContentObserver(Settings.System.getUriFor(
                     Settings.System.SLIM_RECENTS_ICON_PACK),
                     false, this, UserHandle.USER_ALL);
+            resolver.registerContentObserver(Settings.System.getUriFor(
+                    Settings.System.RECENT_PANEL_FAVORITES),
+                    false, this, UserHandle.USER_ALL);
+            resolver.registerContentObserver(Settings.System.getUriFor(
+                    Settings.System.LOCK_TO_APP_ENABLED),
+                    false, this, UserHandle.USER_ALL);
+            resolver.registerContentObserver(Settings.System.getUriFor(
+                    Settings.System.RECENTS_MAX_APPS),
+                    false, this, UserHandle.USER_ALL);
             update();
         }
 
         @Override
         protected void update() {
-            // Close recent panel if it is opened.
-            hideRecents(false);
+            // Close recent panel if it is opened, but don't close it if we are setting a new favorite app
+            //(see RecentPanelView handleFavoriteEntry)
+            if (shouldHidePanel) hideRecents(false);
+            shouldHidePanel = true;
 
             ContentResolver resolver = mContext.getContentResolver();
 
@@ -646,6 +656,15 @@ public class RecentController implements RecentPanelView.OnExitListener,
                         resolver, Settings.Global.SINGLE_HAND_MODE));
                 mRecentPanelView.setCardColor(Settings.System.getIntForUser(
                         resolver, Settings.System.RECENT_CARD_BG_COLOR, 0x00ffffff,
+                        UserHandle.USER_CURRENT));
+                mRecentPanelView.setCurrentFavorites(Settings.System.getStringForUser(
+                        resolver, Settings.System.RECENT_PANEL_FAVORITES,
+                        UserHandle.USER_CURRENT));
+                mRecentPanelView.isScreenPinningEnabled(Settings.System.getIntForUser(
+                        resolver, Settings.System.LOCK_TO_APP_ENABLED, 0,
+                        UserHandle.USER_CURRENT) == 1);
+                mRecentPanelView.setMaxAppsToLoad(Settings.System.getIntForUser(
+                        resolver, Settings.System.RECENTS_MAX_APPS, 15,
                         UserHandle.USER_CURRENT));
             }
 
